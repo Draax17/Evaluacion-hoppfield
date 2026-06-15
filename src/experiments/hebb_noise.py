@@ -2,7 +2,8 @@
 
 The experiment corrupts the stored alphabet patterns with 5%, 10%, and 15%
 bit flips, then evaluates whether the Hebbian network recovers the original
-pattern in one direct step.
+pattern in one direct step while sweeping the number of stored patterns from
+1 to 26, matching the Hopfield evaluation protocol.
 """
 
 from __future__ import annotations
@@ -41,8 +42,16 @@ def _add_bipolar_noise(pattern: np.ndarray, noise_level: float, rng: np.random.G
     return noisy.reshape(pattern.shape)
 
 
-def evaluate_noise(dataset_path: str | Path = DATASET_PATH, seed: int = 42) -> pd.DataFrame:
-    """Evaluate recall under controlled bit-flip noise for all sizes."""
+def evaluate_noise(
+    dataset_path: str | Path = DATASET_PATH,
+    seed: int = 42,
+    repetitions: int = 10,
+) -> pd.DataFrame:
+    """Evaluate recall under controlled bit-flip noise for all sizes.
+
+    For each grid size, the network is trained with the first 1..26 stored
+    patterns and then tested under all configured noise levels.
+    """
 
     dataset = load_dataset(dataset_path)
     rng = np.random.default_rng(seed)
@@ -51,27 +60,39 @@ def evaluate_noise(dataset_path: str | Path = DATASET_PATH, seed: int = 42) -> p
     for size in sorted(dataset):
         bundle = dataset[size]
         patterns = bundle.matrices
-        network = HebbianNetwork().train(patterns)
+        total_patterns = int(patterns.shape[0])
 
-        for noise_level in NOISE_LEVELS:
-            exact_matches = 0
-            bit_accuracies: list[float] = []
+        for n_patterns in range(1, total_patterns + 1):
+            trained_patterns = patterns[:n_patterns]
+            network = HebbianNetwork().train(trained_patterns)
 
-            for original_pattern in patterns:
-                noisy_pattern = _add_bipolar_noise(original_pattern, noise_level, rng)
-                recalled_pattern = network.predict(noisy_pattern)
-                exact_matches += int(np.array_equal(recalled_pattern, original_pattern))
-                bit_accuracies.append(float(np.mean(recalled_pattern == original_pattern)))
+            for noise_level in NOISE_LEVELS:
+                exact_matches = 0
+                bit_accuracies: list[float] = []
 
-            rows.append(
-                {
-                    "size": int(size),
-                    "noise_level": float(noise_level),
-                    "exact_recovery_rate": float(exact_matches / len(patterns)),
-                    "mean_bit_accuracy": float(np.mean(bit_accuracies)),
-                    "total_patterns": int(len(patterns)),
-                }
-            )
+                for _ in range(repetitions):
+                    for original_pattern in trained_patterns:
+                        noisy_pattern = _add_bipolar_noise(original_pattern, noise_level, rng)
+                        recalled_pattern = network.predict(noisy_pattern)
+                        exact_matches += int(np.array_equal(recalled_pattern, original_pattern))
+                        bit_accuracies.append(float(np.mean(recalled_pattern == original_pattern)))
+
+                total_trials = repetitions * len(trained_patterns)
+                rows.append(
+                    {
+                        "size": int(size),
+                        "n_neurons": int(size * size),
+                        "n_patterns": int(n_patterns),
+                        "noise_level": float(noise_level),
+                        "noise_percent": int(noise_level * 100),
+                        "repetitions": int(repetitions),
+                        "correct": int(exact_matches),
+                        "total_trials": int(total_trials),
+                        "accuracy": float(exact_matches / total_trials),
+                        "mean_bit_accuracy": float(np.mean(bit_accuracies)),
+                        "std_bit_accuracy": float(np.std(bit_accuracies)),
+                    }
+                )
 
     return pd.DataFrame(rows)
 
@@ -85,17 +106,28 @@ def save_noise_plots(results: pd.DataFrame, output_dir: str | Path = OUTPUT_FIGU
     saved_paths: list[Path] = []
     for size, subset in results.groupby("size"):
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.bar(
-            subset["noise_level"].astype(str),
-            subset["exact_recovery_rate"],
-            color="#4C72B0",
-        )
+        pivot = subset.pivot(index="n_patterns", columns="noise_level", values="accuracy").sort_index()
+        x_positions = np.arange(len(pivot.index))
+        noise_levels = list(pivot.columns)
+        bar_width = 0.8 / max(len(noise_levels), 1)
 
-        ax.set_title(f"Hebbian recovery under noise - {size}x{size}")
-        ax.set_xlabel("Noise level")
-        ax.set_ylabel("Exact recovery rate")
+        for index, noise_level in enumerate(noise_levels):
+            offsets = x_positions + (index - (len(noise_levels) - 1) / 2) * bar_width
+            ax.bar(
+                offsets,
+                pivot[noise_level].to_numpy(),
+                width=bar_width,
+                label=f"noise = {noise_level:.2f}",
+            )
+
+        ax.set_title(f"Hebbian noise recovery - {size}x{size}")
+        ax.set_xlabel("Stored patterns")
+        ax.set_ylabel("Accuracy")
         ax.set_ylim(0.0, 1.05)
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(pivot.index.astype(int))
         ax.grid(True, axis="y", alpha=0.3)
+        ax.legend(title="Noise level")
         fig.tight_layout()
 
         output_file = figures_dir / f"hebb_noise_{size}x{size}.png"
