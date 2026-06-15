@@ -7,10 +7,8 @@ weight diagonal to zero.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 
 
-@dataclass(frozen=True)
-class RecallResult
+class HopfieldNetwork:
+    """Discrete Hopfield network for autoassociative memory
