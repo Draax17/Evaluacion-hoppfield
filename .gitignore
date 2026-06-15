@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+dataset/*.npz
+results/figures/*
+results/tables/*
+reports/*.pdf
+
+!dataset/.gitkeep
+!results/figures/.gitkeep
+!results/tables/.gitkeep
+!reports/.gitkeep
