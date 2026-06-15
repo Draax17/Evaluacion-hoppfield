@@ -241,7 +241,53 @@ def visualize_pattern(
     return ax
 
 
+def save_alphabet_figures(
+    dataset: dict[int, AlphabetDataset],
+    output_dir: str | Path = "results/figures",
+    show: bool = True,
+) -> list[Path]:
+    """Create one figure per grid size and optionally display it.
+
+    Each figure lays out the 26 letters in a 4x7 grid and saves the result
+    to the figures directory so the dataset can be inspected without notebooks.
+    """
+
+    figures_dir = Path(output_dir)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_paths: list[Path] = []
+    for size, bundle in dataset.items():
+        rows = 4
+        cols = 7
+        fig, axes = plt.subplots(rows, cols, figsize=(14, 8))
+        flat_axes = axes.ravel()
+
+        for axis, letter, matrix in zip(flat_axes, bundle.letters, bundle.matrices):
+            visualize_pattern(matrix, ax=axis, title=letter)
+
+        for axis in flat_axes[len(bundle.letters):]:
+            axis.axis("off")
+
+        fig.suptitle(f"Alphabet dataset {size}x{size}")
+        fig.tight_layout(rect=(0, 0, 1, 0.96))
+
+        figure_path = figures_dir / f"alphabet_{size}x{size}.png"
+        fig.savefig(figure_path, dpi=150, bbox_inches="tight")
+        saved_paths.append(figure_path)
+
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+    return saved_paths
+
+
 if __name__ == "__main__":
     dataset = generate_alphabet()
-    save_dataset(dataset, "dataset/alphabet.npz")
-    print("Dataset generado y guardado en dataset/alphabet.npz")
+    dataset_path = save_dataset(dataset, "src/data/dataset/alphabet.npz")
+    figure_paths = save_alphabet_figures(dataset, output_dir="results/figures", show=True)
+
+    print(f"Dataset generado y guardado en {dataset_path}")
+    for figure_path in figure_paths:
+        print(f"Figura guardada en {figure_path}")
