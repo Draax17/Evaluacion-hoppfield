@@ -16,11 +16,4 @@ import numpy as np
 class RecallResult:
     """Container with the result of a Hopfield recall process."""
 
-    state: np.ndarray
-    iterations: int
-    converged: bool
-    energy: float
-
-
-class HopfieldNetwork:
-    """Discrete Hopfield network for bipolar auto-associative memory
+    state:
