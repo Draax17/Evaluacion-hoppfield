@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -13,6 +16,7 @@ from src.models.hopfield import HopfieldNetwork
 ROOT = Path(__file__).resolve().parents[2]
 DATASET_DIR = ROOT / "dataset"
 OUTPUT_PATH = ROOT / "results" / "tables" / "hopfield_capacity.csv"
+FIGURES_DIR = ROOT / "results" / "figures"
 
 
 def load_dataset(size: int, dataset_dir: Path = DATASET_DIR) -> tuple[np.ndarray, np.ndarray]:
@@ -74,10 +78,37 @@ def run_capacity_experiment(
     return results
 
 
+def save_capacity_plots(results: pd.DataFrame, output_dir: Path = FIGURES_DIR) -> list[Path]:
+    """Save one capacity figure per grid size."""
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    saved_paths: list[Path] = []
+
+    for size, subset in results.groupby("size"):
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.plot(subset["n_patterns"], subset["accuracy"], marker="o", color="#4C72B0")
+        ax.set_title(f"Hopfield capacity - {size}x{size}")
+        ax.set_xlabel("Stored patterns")
+        ax.set_ylabel("Accuracy")
+        ax.set_ylim(0.0, 1.05)
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+
+        figure_path = output_dir / f"hopfield_capacity_{size}x{size}.png"
+        fig.savefig(figure_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        saved_paths.append(figure_path)
+
+    return saved_paths
+
+
 def main() -> None:
     """Command-line entry point."""
     results = run_capacity_experiment()
+    figure_paths = save_capacity_plots(results)
     print(f"Saved: {OUTPUT_PATH}")
+    for figure_path in figure_paths:
+        print(f"Saved figure: {figure_path}")
     print(results)
 
 
