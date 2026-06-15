@@ -23,7 +23,7 @@ from src.models.hebbian import HebbianNetwork
 
 DATASET_PATH = Path(__file__).resolve().parents[1] / "data" / "dataset" / "alphabet.npz"
 OUTPUT_CSV = Path(__file__).resolve().parents[2] / "results" / "tables" / "hebb_noise.csv"
-OUTPUT_FIGURE = Path(__file__).resolve().parents[2] / "results" / "figures" / "hebb_noise.png"
+OUTPUT_FIGURES_DIR = Path(__file__).resolve().parents[2] / "results" / "figures"
 NOISE_LEVELS: tuple[float, ...] = (0.05, 0.10, 0.15)
 
 
@@ -76,26 +76,34 @@ def evaluate_noise(dataset_path: str | Path = DATASET_PATH, seed: int = 42) -> p
     return pd.DataFrame(rows)
 
 
-def save_noise_plot(results: pd.DataFrame, output_path: str | Path = OUTPUT_FIGURE) -> Path:
-    """Save a grouped bar chart for the noise recovery results."""
+def save_noise_plots(results: pd.DataFrame, output_dir: str | Path = OUTPUT_FIGURES_DIR) -> list[Path]:
+    """Save one grouped bar chart per grid size for the noise recovery results."""
 
-    output_file = Path(output_path)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    figures_dir = Path(output_dir)
+    figures_dir.mkdir(parents=True, exist_ok=True)
 
-    pivot = results.pivot(index="noise_level", columns="size", values="exact_recovery_rate")
-    fig, ax = plt.subplots(figsize=(8, 5))
-    pivot.plot(kind="bar", ax=ax)
+    saved_paths: list[Path] = []
+    for size, subset in results.groupby("size"):
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.bar(
+            subset["noise_level"].astype(str),
+            subset["exact_recovery_rate"],
+            color="#4C72B0",
+        )
 
-    ax.set_title("Hebbian recovery under noise")
-    ax.set_xlabel("Noise level")
-    ax.set_ylabel("Exact recovery rate")
-    ax.set_ylim(0.0, 1.05)
-    ax.grid(True, axis="y", alpha=0.3)
-    ax.legend(title="Grid size")
-    fig.tight_layout()
-    fig.savefig(output_file, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    return output_file
+        ax.set_title(f"Hebbian recovery under noise - {size}x{size}")
+        ax.set_xlabel("Noise level")
+        ax.set_ylabel("Exact recovery rate")
+        ax.set_ylim(0.0, 1.05)
+        ax.grid(True, axis="y", alpha=0.3)
+        fig.tight_layout()
+
+        output_file = figures_dir / f"hebb_noise_{size}x{size}.png"
+        fig.savefig(output_file, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        saved_paths.append(output_file)
+
+    return saved_paths
 
 
 def main() -> None:
@@ -104,8 +112,10 @@ def main() -> None:
     results = evaluate_noise()
     OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     results.to_csv(OUTPUT_CSV, index=False)
-    save_noise_plot(results)
+    figure_paths = save_noise_plots(results)
     print(f"Noise results saved to {OUTPUT_CSV}")
+    for figure_path in figure_paths:
+        print(f"Noise figure saved to {figure_path}")
 
 
 if __name__ == "__main__":

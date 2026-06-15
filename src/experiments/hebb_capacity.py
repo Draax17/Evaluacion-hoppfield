@@ -23,7 +23,7 @@ from src.models.hebbian import HebbianNetwork
 
 DATASET_PATH = Path(__file__).resolve().parents[1] / "data" / "dataset" / "alphabet.npz"
 OUTPUT_CSV = Path(__file__).resolve().parents[2] / "results" / "tables" / "hebb_capacity.csv"
-OUTPUT_FIGURE = Path(__file__).resolve().parents[2] / "results" / "figures" / "hebb_capacity.png"
+OUTPUT_FIGURES_DIR = Path(__file__).resolve().parents[2] / "results" / "figures"
 
 
 def evaluate_capacity(dataset_path: str | Path = DATASET_PATH) -> pd.DataFrame:
@@ -57,26 +57,31 @@ def evaluate_capacity(dataset_path: str | Path = DATASET_PATH) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def save_capacity_plot(results: pd.DataFrame, output_path: str | Path = OUTPUT_FIGURE) -> Path:
-    """Save a line plot of recall accuracy versus stored patterns."""
+def save_capacity_plots(results: pd.DataFrame, output_dir: str | Path = OUTPUT_FIGURES_DIR) -> list[Path]:
+    """Save one line plot per grid size for recall accuracy versus stored patterns."""
 
-    output_file = Path(output_path)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    figures_dir = Path(output_dir)
+    figures_dir.mkdir(parents=True, exist_ok=True)
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    saved_paths: list[Path] = []
     for size, subset in results.groupby("size"):
+        fig, ax = plt.subplots(figsize=(8, 5))
         ax.plot(subset["n_patterns"], subset["accuracy"], marker="o", label=f"{size}x{size}")
 
-    ax.set_title("Hebbian capacity")
-    ax.set_xlabel("Stored patterns")
-    ax.set_ylabel("Exact recall accuracy")
-    ax.set_ylim(0.0, 1.05)
-    ax.grid(True, alpha=0.3)
-    ax.legend(title="Grid size")
-    fig.tight_layout()
-    fig.savefig(output_file, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    return output_file
+        ax.set_title(f"Hebbian capacity - {size}x{size}")
+        ax.set_xlabel("Stored patterns")
+        ax.set_ylabel("Exact recall accuracy")
+        ax.set_ylim(0.0, 1.05)
+        ax.grid(True, alpha=0.3)
+        ax.legend([f"{size}x{size}"])
+        fig.tight_layout()
+
+        output_file = figures_dir / f"hebb_capacity_{size}x{size}.png"
+        fig.savefig(output_file, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        saved_paths.append(output_file)
+
+    return saved_paths
 
 
 def main() -> None:
@@ -85,8 +90,10 @@ def main() -> None:
     results = evaluate_capacity()
     OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     results.to_csv(OUTPUT_CSV, index=False)
-    save_capacity_plot(results)
+    figure_paths = save_capacity_plots(results)
     print(f"Capacity results saved to {OUTPUT_CSV}")
+    for figure_path in figure_paths:
+        print(f"Capacity figure saved to {figure_path}")
 
 
 if __name__ == "__main__":
