@@ -33,6 +33,7 @@ HEBB_NOISE_CSV = TABLES_DIR / "hebb_noise.csv"
 OUTPUT_CAPACITY_CSV = TABLES_DIR / "comparison_capacity.csv"
 OUTPUT_NOISE_CSV = TABLES_DIR / "comparison_noise.csv"
 OUTPUT_SUMMARY_CSV = TABLES_DIR / "comparison_summary.csv"
+OUTPUT_NOISE_BY_LEVEL_CSV = TABLES_DIR / "comparison_noise_by_level.csv"
 
 
 def _require_files(paths: list[Path]) -> None:
@@ -164,27 +165,94 @@ def build_summary(capacity: pd.DataFrame, noise: pd.DataFrame) -> pd.DataFrame:
     """Build a compact summary table for quick comparison."""
 
     capacity = capacity.sort_values(["size", "network", "n_patterns"])
-    noise = noise.sort_values(["size", "network", "noise_level"])
+    noise = noise.sort_values(["size", "network", "noise_level", "n_patterns"])
+
+    capacity_auc_rows: list[dict[str, float | int | str]] = []
+    for (size, network), group in capacity.groupby(["size", "network"]):
+        capacity_auc_rows.append(
+            {
+                "size": int(size),
+                "network": network,
+                "capacity_auc": float(
+                    np.trapz(group["accuracy"].to_numpy(), group["n_patterns"].to_numpy())
+                    / group["n_patterns"].max()
+                ),
+            }
+        )
+    capacity_auc = pd.DataFrame(capacity_auc_rows)
 
     capacity_summary = (
         capacity.groupby(["size", "network"], as_index=False)
         .agg(
             mean_capacity_accuracy=("accuracy", "mean"),
+            std_capacity_accuracy=("accuracy", "std"),
+            min_capacity_accuracy=("accuracy", "min"),
+            max_capacity_accuracy=("accuracy", "max"),
             final_capacity_accuracy=("accuracy", "last"),
             best_capacity_accuracy=("accuracy", "max"),
         )
     )
-
     noise_summary = (
         noise.groupby(["size", "network"], as_index=False)
         .agg(
             mean_noise_accuracy=("accuracy", "mean"),
+            std_noise_accuracy=("accuracy", "std"),
             min_noise_accuracy=("accuracy", "min"),
             max_noise_accuracy=("accuracy", "max"),
         )
     )
 
-    return capacity_summary.merge(noise_summary, on=["size", "network"], how="outer")
+    noise_level_table = build_noise_by_level_summary(noise)
+    noise_level_summary = (
+        noise_level_table.groupby(["size", "network"], as_index=False)
+        .agg(
+            mean_noise_level_accuracy=("mean_noise_accuracy", "mean"),
+            std_noise_level_accuracy=("mean_noise_accuracy", "std"),
+            min_noise_level_accuracy=("min_noise_accuracy", "min"),
+            max_noise_level_accuracy=("max_noise_accuracy", "max"),
+            mean_noise_level_auc=("noise_auc", "mean"),
+            std_noise_level_auc=("noise_auc", "std"),
+        )
+    )
+
+    summary = capacity_summary.merge(capacity_auc, on=["size", "network"], how="outer")
+    summary = summary.merge(noise_summary, on=["size", "network"], how="outer")
+    summary = summary.merge(noise_level_summary, on=["size", "network"], how="outer")
+    return summary
+
+
+def build_noise_by_level_summary(noise: pd.DataFrame) -> pd.DataFrame:
+    """Summarize noise results by grid size, network, and noise level."""
+
+    grouped = (
+        noise.sort_values(["size", "network", "noise_level", "n_patterns"])
+        .groupby(["size", "network", "noise_level"], as_index=False)
+        .agg(
+            mean_noise_accuracy=("accuracy", "mean"),
+            std_noise_accuracy=("accuracy", "std"),
+            min_noise_accuracy=("accuracy", "min"),
+            max_noise_accuracy=("accuracy", "max"),
+            final_noise_accuracy=("accuracy", "last"),
+        )
+    )
+
+    auc_rows: list[dict[str, float | int | str]] = []
+    ordered_noise = noise.sort_values(["size", "network", "noise_level", "n_patterns"])
+    for (size, network, noise_level), group in ordered_noise.groupby(["size", "network", "noise_level"]):
+        auc_rows.append(
+            {
+                "size": int(size),
+                "network": network,
+                "noise_level": float(noise_level),
+                "noise_auc": float(
+                    np.trapz(group["accuracy"].to_numpy(), group["n_patterns"].to_numpy())
+                    / group["n_patterns"].max()
+                ),
+            }
+        )
+
+    auc_frame = pd.DataFrame(auc_rows)
+    return grouped.merge(auc_frame, on=["size", "network", "noise_level"], how="left")
 
 
 def run_comparison() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -193,11 +261,13 @@ def run_comparison() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     capacity = load_capacity_results()
     noise = load_noise_results()
     summary = build_summary(capacity, noise)
+    noise_by_level = build_noise_by_level_summary(noise)
 
     TABLES_DIR.mkdir(parents=True, exist_ok=True)
     capacity.to_csv(OUTPUT_CAPACITY_CSV, index=False)
     noise.to_csv(OUTPUT_NOISE_CSV, index=False)
     summary.to_csv(OUTPUT_SUMMARY_CSV, index=False)
+    noise_by_level.to_csv(OUTPUT_NOISE_BY_LEVEL_CSV, index=False)
 
     capacity_figures = save_capacity_plots(capacity)
     noise_figures = save_noise_plots(noise)
@@ -212,6 +282,7 @@ def main() -> None:
     print(f"Saved: {OUTPUT_CAPACITY_CSV}")
     print(f"Saved: {OUTPUT_NOISE_CSV}")
     print(f"Saved: {OUTPUT_SUMMARY_CSV}")
+    print(f"Saved: {OUTPUT_NOISE_BY_LEVEL_CSV}")
     print(capacity.head())
     print(noise.head())
     print(summary)
