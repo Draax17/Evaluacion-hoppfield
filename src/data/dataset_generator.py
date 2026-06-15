@@ -239,3 +239,9 @@ def visualize_pattern(
     ax.set_yticks([])
     ax.set_title(title or default_title)
     return ax
+
+
+if __name__ == "__main__":
+    dataset = generate_alphabet()
+    save_dataset(dataset, "dataset/alphabet.npz")
+    print("Dataset generado y guardado en dataset/alphabet.npz")
