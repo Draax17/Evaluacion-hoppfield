@@ -13,7 +13,4 @@ import numpy as np
 
 
 @dataclass(frozen=True)
-class RecallResult:
-    """Container with the result of a Hopfield recall process."""
-
-    state:
+class RecallResult
